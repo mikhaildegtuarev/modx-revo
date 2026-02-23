@@ -1,0 +1,142 @@
+<?php
+/**
+
+Plugin for adding custom fields to user profile
+Events: OnMODXInit, OnUserFormPrerender, OnUserFormSave
+*/
+switch ($modx->event->name) {
+case "OnMODXInit":
+// Добавляем поля в карту объектов MODX
+$map = array(
+'modUserProfile' => array(
+'fields' => array(
+'allowed_resources' => null,
+'date_start' => null,
+'date_end' => null,
+),
+'fieldMeta' => array(
+'allowed_resources' => array(
+'dbtype' => 'varchar',
+'precision' => '191',
+'phptype' => 'string',
+'null' => true,
+'default' => null,
+),
+'date_start' => array(
+'dbtype' => 'int',
+'precision' => '20',
+'phptype' => 'integer',
+'null' => true,
+'default' => null,
+),
+'date_end' => array(
+'dbtype' => 'int',
+'precision' => '20',
+'phptype' => 'integer',
+'null' => true,
+'default' => null,
+),
+),
+),
+);
+
+    foreach ($map as $class => $data) {
+        $modx->loadClass($class);
+        foreach ($data['fields'] as $field => $default) {
+            if (!isset($modx->map[$class]['fields'][$field])) {
+                $modx->map[$class]['fields'][$field] = $default;
+                if (isset($data['fieldMeta'][$field])) {
+                    $modx->map[$class]['fieldMeta'][$field] = $data['fieldMeta'][$field];
+                }
+            }
+        }
+    }
+    break;
+
+case "OnUserFormPrerender":
+    // Проверяем существование пользователя
+    if (!isset($user) || !is_object($user) || $user->get('id') < 1) {
+        return;
+    }
+
+    $profile = $user->getOne('Profile');
+    if (!$profile) {
+        return;
+    }
+
+    // Получаем значения полей
+    $allowedResources = $profile->get('allowed_resources') ?: '';
+    $dateStart = $profile->get('date_start');
+    $dateEnd = $profile->get('date_end');
+
+    // Форматируем даты
+    $dateStartFormatted = (!empty($dateStart) && is_numeric($dateStart)) 
+        ? date('Y-m-d', $dateStart) 
+        : '';
+    $dateEndFormatted = (!empty($dateEnd) && is_numeric($dateEnd)) 
+        ? date('Y-m-d', $dateEnd) 
+        : '';
+
+    // Экранируем для JavaScript
+    $allowedResources = htmlspecialchars($allowedResources, ENT_QUOTES, 'UTF-8');
+
+    $js = <<<JS
+<script type="text/javascript"> Ext.onReady(function() { Ext.ComponentMgr.onAvailable('modx-user-tabs', function(panel) { panel.on('beforerender', function() { // Находим левую колонку первой вкладки var tabPanel = this.items && this.items.items && this.items.items[0]; if (!tabPanel) return; var formPanel = tabPanel.items && tabPanel.items.items && tabPanel.items.items[0]; if (!formPanel) return; var leftCol = formPanel.items && formPanel.items.items && formPanel.items.items[0]; if (!leftCol) return; // Создаем FieldSet с правильным layout var customFields = new Ext.form.FieldSet({ title: 'Доступ к ресурсам', collapsible: true, collapsed: false, style: 'margin-top: 15px; margin-bottom: 15px;', autoHeight: true, layout: 'form', // КЛЮЧЕВОЕ: включает отображение fieldLabel labelWidth: 150, anchor: '100%', defaults: { anchor: '100%', msgTarget: 'under' }, items: [ { xtype: 'textfield', name: 'allowed_resources', fieldLabel: 'Разрешенные ресурсы', maxLength: 191, value: '{$allowedResources}', listeners: { afterrender: function(cmp) { if (Ext.QuickTips) { Ext.QuickTips.register({ target: cmp.getEl(), text: 'ID ресурсов через запятую (например: 1,5,12,43)' }); } } } }, { xtype: 'datefield', name: 'date_start', fieldLabel: 'Дата начала доступа', format: 'Y-m-d', value: '{$dateStartFormatted}', emptyText: 'Выберите дату начала' }, { xtype: 'datefield', name: 'date_end', fieldLabel: 'Дата окончания доступа', format: 'Y-m-d', value: '{$dateEndFormatted}', emptyText: 'Выберите дату окончания' } ] }); // Добавляем в левую колонку leftCol.add(customFields); // Обновляем layout if (leftCol.doLayout) { leftCol.doLayout(); } if (panel.doLayout) { panel.doLayout(); } }); }); }); </script> <style type="text/css"> /* Стили для полей */ .x-fieldset { border: 1px solid #d0d0d0; padding: 10px; margin-bottom: 10px; } .x-fieldset legend { font-weight: bold; color: #333; padding: 0 5px; } .x-form-item { margin-bottom: 10px; } .x-form-item-label { font-weight: bold !important; color: #555; font-size: 12px; } .x-form-field-wrap { margin-bottom: 5px; } </style>
+JS;
+
+    $modx->controller->addHtml($js);
+    break;
+    
+case "OnUserFormSave":
+    if (!isset($user) || !is_object($user)) {
+        return;
+    }
+    
+    $profile = $user->getOne('Profile');
+    if (!$profile) {
+        return;
+    }
+    
+    $modified = false;
+    
+    // Сохраняем allowed_resources
+    if (isset($_POST['allowed_resources'])) {
+        $value = trim($_POST['allowed_resources']);
+        $profile->set('allowed_resources', $value !== '' ? $value : null);
+        $modified = true;
+    }
+    
+    // Сохраняем date_start
+    if (isset($_POST['date_start'])) {
+        if (!empty($_POST['date_start'])) {
+            $timestamp = strtotime($_POST['date_start']);
+            if ($timestamp !== false) {
+                $profile->set('date_start', $timestamp);
+                $modified = true;
+            }
+        } else {
+            $profile->set('date_start', null);
+            $modified = true;
+        }
+    }
+    
+    // Сохраняем date_end
+    if (isset($_POST['date_end'])) {
+        if (!empty($_POST['date_end'])) {
+            $timestamp = strtotime($_POST['date_end']);
+            if ($timestamp !== false) {
+                $profile->set('date_end', $timestamp);
+                $modified = true;
+            }
+        } else {
+            $profile->set('date_end', null);
+            $modified = true;
+        }
+    }
+    
+    // Сохраняем профиль только если были изменения
+    if ($modified) {
+        $profile->save();
+    }
+    break;
+}
