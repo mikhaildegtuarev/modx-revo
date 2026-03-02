@@ -1,0 +1,79 @@
+<?php
+define('MODX_API_MODE', true);
+require_once $_SERVER['DOCUMENT_ROOT'] . '/index.php';
+
+$modx->getService('error', 'error.modError');
+
+$sourceCategoryId = 766;
+$targetCategoryId = 769;
+
+// ✅ miniShop2: товары — это ресурсы с parent = category_id ИЛИ через msCategoryMember
+// Вариант 1: Товары как дочерние ресурсы (parent = 180)
+$criteria = [
+    'parent' => $sourceCategoryId,
+    'class_key' => 'msProduct',
+    'published' => 1,
+    'deleted' => 0
+];
+
+$products = $modx->getCollection('msProduct', $criteria);
+
+// Если не нашли — пробуем через msCategoryMember (дополнительные категории)
+if (empty($products)) {
+    $table = $modx->getTableName('msCategoryMember');
+    $query = "SELECT product_id FROM {$table} WHERE category_id = {$sourceCategoryId}";
+    $result = $modx->query($query);
+    
+    $productIds = [];
+    while ($row = $result->fetch(PDO::FETCH_ASSOC)) {
+        $productIds[] = $row['product_id'];
+    }
+    
+    if (!empty($productIds)) {
+        $criteria = [
+            'id:IN' => $productIds,
+            'class_key' => 'msProduct',
+            'published' => 1,
+            'deleted' => 0
+        ];
+        $products = $modx->getCollection('msProduct', $criteria);
+    }
+}
+
+echo "Найдено товаров: " . count($products) . "\n\n<br><br>";
+
+$added = 0;
+$skipped = 0;
+
+foreach ($products as $product) {
+    $productId = $product->get('id');
+    echo "Обработка товара ID: {$productId}... ";
+    
+    // Проверяем, не добавлен ли уже
+    $exists = $modx->getObject('msCategoryMember', [
+        'product_id' => $productId,
+        'category_id' => $targetCategoryId
+    ]);
+    
+    if ($exists) {
+        echo "уже в категории {$targetCategoryId}\n<br><br>";
+        $skipped++;
+        continue;
+    }
+    
+    // Добавляем в целевую категорию
+    $member = $modx->newObject('msCategoryMember');
+    $member->set('product_id', $productId);
+    $member->set('category_id', $targetCategoryId);
+    
+    if ($member->save()) {
+        echo "✅ добавлен\n<br>";
+        $added++;
+    } else {
+        echo "❌ ошибка\n";
+    }
+}
+
+echo "\n━━━━━━━━━━━━━━━━━━━━━━\n";
+echo "Добавлено: {$added}\n";
+echo "Пропущено: {$skipped}\n";
