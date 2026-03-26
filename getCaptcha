@@ -1,0 +1,60 @@
+<?php
+/*Простая Каптча для AjaxForm*/
+/*Для рабуты нужен еще хук checkCaptcha (код ниже)*/
+/* Пример вставки: [[!AjaxForm?
+	&snippet=`FormIt`
+	&hooks=`checkCaptcha,email`
+	&form=`FORM-CONTACT-MODAL`
+  &emailTpl=`MAIL-ADMIN-PRODUCT`
+	&emailSubject=`Заявка с сайта [[++site_name]]`
+	&emailFrom=`[[++emailsender]]`
+	&emailTo=`[[++emailsender]]`
+	&validate=`captcha:required,company:required,imy:required,phone:required,mail:required,emailh:blank`
+	&validationErrorMessage=`Пожалуйста, заполните поля корректно`
+	&successMessage=`Ваша заявка принята, в ближайшее время мы свяжемся с Вами`
+	&status=`1`
+]] */
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// генерим простое число
+$number1 = rand(10, 20);
+$number2 = rand(10, 20);
+
+// сохраняем ответ в сессию
+$_SESSION['simple_captcha'] = $number1 + $number2;
+
+// HTML каптчи
+$output = '
+<div class="form-group">
+    <label>Проверка на роботов! Сколько будет ' . $number1 . ' + ' . $number2 . '?</label>
+    <input type="text" name="captcha" class="form-control" required>
+</div>
+';
+
+return $output;
+
+
+
+
+/*checkCaptcha*/
+/*checkCaptcha В отдельный сниппет вставьте этот код*/
+<?php
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// получаем значение правильно
+$captcha = $hook->getValue('captcha');
+
+$correct = $_SESSION['simple_captcha'] ?? null;
+
+if (!$captcha || $captcha != $correct) {
+    $hook->addError('captcha', 'Неверно решена каптча');
+    return false;
+}
+
+unset($_SESSION['simple_captcha']);
+
+return true;
