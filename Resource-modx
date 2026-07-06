@@ -1,0 +1,55 @@
+<?php
+/**
+ * Сниппет SetResourceOwner
+ * Меняет createdby у ресурса по ID и выводит все параметры ресурса
+ * Параметры:
+ * - resource_id (обязательно)
+ * - user_id (обязательно) — ID пользователя MODX
+ */
+
+$resource_id = 62;
+$user_id     = 2;
+
+if (!$resource_id || !$user_id) {
+    return $modx->log(xPDO::LOG_LEVEL_ERROR, 'SetResourceOwner: не переданы resource_id и/или user_id');
+}
+
+$resource = $modx->getObject('modResource', $resource_id);
+if (!$resource) {
+    return $modx->log(xPDO::LOG_LEVEL_ERROR, "SetResourceOwner: ресурс с ID {$resource_id} не найден");
+}
+
+$user = $modx->getObject('modUser', $user_id);
+if (!$user) {
+    return $modx->log(xPDO::LOG_LEVEL_ERROR, "SetResourceOwner: пользователь с ID {$user_id} не найден");
+}
+
+// Исправлены опечатки: createdby и createdon
+$resource->set('createdby', $user_id);
+$resource->set('createdon', date('Y-m-d H:i:s'));
+
+if ($resource->save()) {
+    $modx->cacheManager->refresh([
+        'resources' => ['update' => [$resource_id]],
+    ]);
+
+    // Получаем все поля ресурса
+    $fields = $resource->toArray();
+
+    // Формируем читаемый вывод
+    $output = "<h3>Ресурс {$resource_id} успешно обновлён: createdby = {$user_id}</h3>";
+    $output .= "<h4>Все параметры ресурса:</h4>";
+    $output .= "<table border='1' cellpadding='5' cellspacing='0' style='border-collapse:collapse;'>";
+    $output .= "<tr><th><b>Поле</b></th><th><b>Значение</b></th></tr>";
+
+    foreach ($fields as $key => $value) {
+        $displayValue = is_array($value) ? json_encode($value, JSON_UNESCAPED_UNICODE) : htmlspecialchars((string)$value);
+        $output .= "<tr><td><code>{$key}</code></td><td>{$displayValue}</td></tr>";
+    }
+
+    $output .= "</table>";
+
+    return $output;
+} else {
+    return $modx->log(xPDO::LOG_LEVEL_ERROR, "SetResourceOwner: ошибка сохранения ресурса {$resource_id}");
+}
